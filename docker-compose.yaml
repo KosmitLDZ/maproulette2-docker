@@ -1,0 +1,62 @@
+version: "3.7"
+services:
+  database:
+    container_name: maproulette-db
+    image: mdillon/postgis
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=mrdata
+      - POSTGRES_USER=mrdbuser
+      - POSTGRES_PASSWORD=mrdbpass
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  backend:
+    container_name: maproulette-backend
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+      args:
+        gitRepo: https://github.com/maproulette/maproulette2.git
+        gitTag: LATEST
+        apiHost: maproulette.org
+    image: maproulette-backend:latest
+    ports:
+      - "9000:9000"
+    environment:
+      - API_HOST=maproulette.org
+      - PORT=9000
+      - CONSUMER_KEY=key
+      - CONSUMER_SECRET=secret
+      - SUPER_KEY=key
+      - SUPER_ACCOUNTS=accounts
+      - DB_URL=jdbc:postgresql://database:5432/mrdata
+      - DB_USER=mrdbuser
+      - DB_PASSWORD=mrdbpass
+    depends_on:
+      - database
+  frontend:
+    container_name: maproulette-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        gitRepo: https://github.com/osmlab/maproulette3.git
+        gitTag: LATEST
+    image: maproulette-frontend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_BASE_PATH=/
+      - REACT_APP_URL=http://localhost:3000
+      - REACT_APP_MAP_ROULETTE_SERVER_URL=http://localhost:9000
+      - REACT_APP_MAP_ROULETTE_SERVER_WEBSOCKET_URL=ws://localhost:9000/ws
+      - REACT_APP_FEATURE_BOUNDED_TASK_BROWSING=enabled
+      - REACT_APP_FEATURE_LEADERBOARD=enabled
+      - REACT_APP_FEATURE_CHALLENGE_ANALYSIS_TABLE=enabled
+      - REACT_APP_FEATURE_MOBILE_DEVICES=enabled
+    depends_on:
+      - database
+      - backend
+volumes:
+  db-data:

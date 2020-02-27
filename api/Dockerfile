@@ -1,48 +1,52 @@
-FROM adoptopenjdk/openjdk8:jdk8u212-b03 
+FROM adoptopenjdk/openjdk8:jdk8u212-b03
 
-RUN export TERM=xterm
-
-# Add the User
+## Add the User
 RUN adduser -system --gid 0 maproulette
 
-# Apt-Get for basic packages
-RUN apt-get update && apt-get upgrade -y && apt-get install -y apt-transport-https gnupg2
-RUN echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
-RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 642AC823
-RUN apt-get update && apt-get upgrade -y && apt-get install -y scala sbt unzip wget git openssh-server jq g++ build-essential
-EXPOSE 80
+## Apt-Get for basic packages
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y apt-transport-https gnupg2 \
+    && echo "deb https://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list \
+    && apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 642AC823 \
+    && apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y scala \
+        sbt \
+        unzip \
+        wget \
+        git \
+        openssh-server \
+        jq \
+        g++ \
+        build-essential
 
-ARG GIT="maproulette/maproulette2"
-RUN echo ${GIT}
-ARG CACHEBUST=1
-RUN echo $CACHEBUST
+ARG gitRepo=https://github.com/maproulette/maproulette2.git
+ARG gitTag=LATEST
+
 # Download Maproulette V2
-RUN git clone https://github.com/${GIT}.git /maproulette-api
-RUN chmod 777 /maproulette-api
-WORKDIR /maproulette-api
-ARG VERSION="LATEST"
-RUN echo $VERSION
-RUN if [ "${VERSION}" != "LATEST" ]; then git checkout tags/${VERSION} ; fi
+RUN git clone ${gitRepo} /maproulette-api \
+    && chmod 777 /maproulette-api \
+    && cd maproulette-api \
+    && if [ "${gitTag}" != "LATEST" ]; then git checkout tags/${gitTag} ; fi
 
 # package Maproulette V2
-ARG APIHOST="maproulette.org"
-RUN echo ${APIHOST}
-RUN export API_HOST=${APIHOST};sbt clean compile dist
-RUN unzip -d / target/universal/MapRouletteAPI.zip
-WORKDIR /MapRouletteAPI
+WORKDIR /maproulette-api
+ARG apiHost=maproulette.org
+RUN export API_HOST=${apihost} \
+    && sbt clean compile dist \
+    && unzip -d / target/universal/MapRouletteAPI.zip
 
-# Bootstrap commands
-ADD bootstrap.sh /etc/bootstrap.sh
-ADD setupServer.sh /MapRouletteAPI/setupServer.sh
 ADD docker.conf	/MapRouletteAPI/conf/docker.conf
-RUN chmod 777 /etc/bootstrap.sh
-RUN chmod 777 /MapRouletteAPI/setupServer.sh
-WORKDIR /MapRouletteAPI
-# Move the truststore to the correct location
-ADD osmcacerts conf/
+ADD osmcacerts /MapRouletteAPI/conf/
 
-ARG APIHOST="maproulette.org"
-ENV APIHOST=${APIHOST}
-ENV PORT=9000
-
-ENTRYPOINT ["/etc/bootstrap.sh"]
+CMD /MapRouletteAPI/bin/maprouletteapi -Dhttp.port=$PORT -Dconfig.resource=docker.conf \
+    -Ddb.default.url=${DB_URL} \
+    -Ddb.default.username=${DB_USER} \
+    -Ddb.default.password=${DB_PASSWORD} \
+    -Dosm.consumerKey=${CONSUMER_KEY} \
+    -Dosm.consumerSecret=${CONSUMER_SECRET} \
+    -Dsuper.key=${SUPER_KEY} \
+    -Dsuper.accounts=${SUPER_ACCOUNTS} \
+    -Djavax.net.ssl.trustStore=/MapRouletteAPI/conf/osmcacerts \
+    -Djavax.net.ssl.trustStorePassword=openstreetmap
